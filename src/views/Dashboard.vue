@@ -111,7 +111,7 @@
 
     <!-- Detail Modal -->
     <div v-if="selectedNoteItem" class="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4" @click.self="selectedNoteItem = null">
-        <div class="pixel-card bg-gray-900 p-6 w-full max-w-2xl relative text-gray-200">
+        <div class="pixel-card bg-gray-900 p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto relative text-gray-200">
              <button @click="selectedNoteItem = null" class="absolute top-2 right-2 text-red-500 text-xl font-bold">X</button>
              <h3 class="text-xl text-neon-yellow mb-4 font-bold flex items-center gap-2">
                 <span>{{ selectedNoteItem.name }} ({{ selectedNoteItem.code }})</span>

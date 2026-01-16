@@ -63,36 +63,35 @@ const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx...你的ID
 
 ---
 
-## 🚀 部署到 GitHub Pages (自動化部屬)
+## 🚀 部署到 GitHub Pages
 
-本專案已設定好 GitHub Actions，只要你將程式碼推送到 GitHub，它就會自動建置並部署。
+本專案已設定好 `gh-pages` 自動部署腳本。
 
 ### 1. 修改設定檔
-打開 `vite.config.js`，找到 `base` 設定：
+打開 `vite.config.js`，找到 `base` 設定，確保它與你的儲存庫名稱一致：
 ```javascript
 export default defineConfig({
     // ...
-    // 將 'trade-command-center' 改為你的 GitHub Repository 名稱
-    // 例如你的 Repo 叫 my-stock-app，這裡就改成 '/my-stock-app/'
+    // 例如你的 Repo 網址是 https://github.com/user/my-repo
+    // 這裡就改成 '/my-repo/'
     base: '/trade-command-center/', 
 })
 ```
 
-### 2. 推送程式碼到 GitHub
+### 2. 執行部署指令
+在終端機執行以下指令，這將會自動打包並推送到 `gh-pages` 分支：
+
 ```bash
-git init
-git add .
-git commit -m "Initial commit"
-# 將下方 URL 換成你的 GitHub Repo
-git remote add origin https://github.com/你的帳號/你的Repo名稱.git
-git push -u origin main
+npm run deploy
 ```
 
 ### 3. 設定 GitHub Repository
 1. 進入你的 GitHub Repo 頁面。
 2. 點擊 **Settings** > **Pages**。
-3. 在 **Build and deployment** > **Source** 選擇 **GitHub Actions**。
-4. 幾分鐘後，你的網站就會自動上線了！
+3. 在 **Build and deployment** > **Source** 選擇 **Deploy from a branch**。
+4. 在 **Branch** 下拉選單選擇 **`gh-pages`**，資料夾選擇 **`/(root)`**。
+5. 點擊 **Save**。
+6. 幾分鐘後，重新整理頁面，你就會看到網址了！
 
 ---
 
