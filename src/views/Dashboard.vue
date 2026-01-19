@@ -28,6 +28,7 @@
             <th class="p-3 text-center">策略</th>
             <th class="p-3 text-center">風險</th>
             <th class="p-3 text-right">警戒/停損</th>
+            <th class="p-3 text-right">加碼</th>
             <th class="p-3 text-right">停利/目標</th>
             <th class="p-3 text-left">建議/備註</th>
             <th class="p-3 text-center">操作</th>
@@ -35,37 +36,112 @@
         </thead>
         <tbody>
           <tr v-for="item in strategies" :key="item.code" class="hover:bg-gray-800 transition-colors border-b border-gray-800 text-sm">
+            <!-- Code (Read-only) -->
             <td class="p-3 font-mono text-neon-yellow text-center">{{ item.code }}</td>
+            
+            <!-- Name (Read-only) -->
             <td class="p-3 text-left font-bold text-gray-200">{{ item.name }}</td>
-            <td class="p-3 text-center text-neon-blue font-mono">{{ item.holdings }}</td>
-            <td class="p-3 text-right font-mono">{{ item.cost }}</td>
-            <td class="p-3 text-right font-mono">{{ item.currentPrice }}</td>
+
+            <!-- Holdings -->
+            <td class="p-3 text-center text-neon-blue font-mono">
+                <input v-if="editingCode === item.code" v-model="editForm.holdings" class="bg-gray-900 text-white w-20 text-center border border-gray-600 focus:border-neon-blue outline-none rounded" type="number" />
+                <span v-else>{{ item.holdings }}</span>
+            </td>
+
+            <!-- Cost -->
+            <td class="p-3 text-right font-mono">
+                <input v-if="editingCode === item.code" v-model="editForm.cost" class="bg-gray-900 text-white w-20 text-right border border-gray-600 focus:border-neon-blue outline-none rounded" type="number" />
+                <span v-else>{{ item.cost }}</span>
+            </td>
+
+            <!-- Current Price -->
+            <td class="p-3 text-right font-mono">
+                <input v-if="editingCode === item.code" v-model="editForm.currentPrice" class="bg-gray-900 text-white w-20 text-right border border-gray-600 focus:border-neon-blue outline-none rounded" type="number" />
+                <div v-else class="flex items-center justify-end gap-2">
+                    <span>{{ item.currentPrice }}</span>
+                    <button @click="updateSinglePrice(item)" class="text-xs text-gray-500 hover:text-neon-blue transition-colors" :class="{'animate-spin text-neon-blue': loadingPrices[item.code]}" title="更新股價">
+                        🔄
+                    </button>
+                </div>
+            </td>
+
+            <!-- Return (Calculated - Read-only) -->
             <td class="p-3 text-right font-bold" :class="getReturnColor(item.returnRate, item.cost, item.currentPrice)">
               {{ calculateReturn(item) }}
             </td>
+
+            <!-- Strategy -->
             <td class="p-3 text-center">
-                <span class="bg-blue-900 text-blue-200 px-2 py-1 rounded text-xs whitespace-nowrap">{{ item.strategy }}</span>
+                <select v-if="editingCode === item.code" v-model="editForm.strategy" class="bg-gray-900 text-white text-xs p-1 border border-gray-600 rounded">
+                    <option>長期持有</option><option>波段操作</option><option>短線投機</option><option>存股</option>
+                </select>
+                <span v-else class="bg-blue-900 text-blue-200 px-2 py-1 rounded text-xs whitespace-nowrap">{{ item.strategy }}</span>
             </td>
+
+            <!-- Risk -->
              <td class="p-3 text-center">
-                <span :class="getRiskClass(item.risk)" class="px-2 py-1 rounded text-xs whitespace-nowrap">{{ item.risk || '-' }}</span>
+                <select v-if="editingCode === item.code" v-model="editForm.risk" class="bg-gray-900 text-white text-xs p-1 border border-gray-600 rounded">
+                    <option>高</option><option>中</option><option>低</option>
+                </select>
+                <span v-else :class="getRiskClass(item.risk)" class="px-2 py-1 rounded text-xs whitespace-nowrap">{{ item.risk || '-' }}</span>
             </td>
-            <td class="p-3 text-red-300 text-right">{{ item.warning }} / {{ item.stopLoss }}</td>
+
+            <!-- Warning / StopLoss -->
+            <td class="p-3 text-red-300 text-right">
+                <div v-if="editingCode === item.code" class="flex flex-col gap-1 w-24">
+                     <input v-model="editForm.warning" placeholder="警戒" class="bg-gray-900 text-yellow-500 text-xs p-1 border border-gray-600 rounded text-right" />
+                     <input v-model="editForm.stopLoss" placeholder="停損" class="bg-gray-900 text-red-500 text-xs p-1 border border-gray-600 rounded text-right" />
+                </div>
+                <span v-else>{{ item.warning }} / {{ item.stopLoss }}</span>
+            </td>
+
+            <!-- Add Point -->
+            <td class="p-3 text-right text-blue-300">
+                <input v-if="editingCode === item.code" v-model="editForm.addPoint" placeholder="加碼" class="bg-gray-900 text-blue-300 w-20 text-right border border-gray-600 focus:border-neon-blue outline-none rounded" />
+                <span v-else>{{ item.addPoint || '-' }}</span>
+            </td>
+
+            <!-- TP / Target -->
              <td class="p-3 text-right">
-                <div class="text-green-300">{{ item.tp1 }} - {{ item.tp2 }}</div>
-                <div v-if="item.targetPrice" class="text-purple-400 font-bold">🎯 {{ item.targetPrice }}</div>
+                <div v-if="editingCode === item.code" class="flex flex-col gap-1 w-28 text-right">
+                     <div class="flex gap-1">
+                        <input v-model="editForm.tp1" placeholder="TP1" class="w-1/2 bg-gray-900 text-green-300 text-xs p-1 border border-gray-600 rounded" />
+                        <input v-model="editForm.tp2" placeholder="TP2" class="w-1/2 bg-gray-900 text-green-300 text-xs p-1 border border-gray-600 rounded" />
+                     </div>
+                     <input v-model="editForm.targetPrice" placeholder="目標" class="bg-gray-900 text-purple-400 text-xs p-1 border border-gray-600 rounded text-right" />
+                </div>
+                <div v-else>
+                    <div class="text-green-300">{{ item.tp1 }} - {{ item.tp2 }}</div>
+                    <div v-if="item.targetPrice || editingCode === item.code" class="text-purple-400 font-bold">🎯 {{ item.targetPrice }}</div>
+                </div>
              </td>
+
+            <!-- Advice / Notes -->
             <td class="p-3 text-gray-400 max-w-xs relative group">
-                <div class="flex items-center gap-2">
+                <div v-if="editingCode === item.code" class="flex flex-col gap-1 min-w-[150px]">
+                     <input v-model="editForm.advice" placeholder="建議" class="bg-gray-900 text-white text-xs p-1 border border-gray-600 rounded" />
+                     <input v-model="editForm.notes" placeholder="備註" class="bg-gray-900 text-gray-400 text-xs p-1 border border-gray-600 rounded" />
+                </div>
+                <div v-else class="flex items-center gap-2">
                     <div class="truncate w-32 text-white" :title="item.advice">{{ item.advice || item.notes }}</div>
                      <button @click="openNoteModal(item)" class="text-gray-500 hover:text-white transition-colors" title="放大查看">
                         🔍
                     </button>
                 </div>
             </td>
+
+            <!-- Operations -->
             <td class="p-3 text-center">
-                <button @click="handleDelete(item.code)" class="text-red-500 hover:text-red-400 transition-colors p-1" title="刪除">
-                    🗑️
-                </button>
+                <div v-if="editingCode === item.code" class="flex gap-2 justify-center">
+                    <button @click="saveEdit" class="text-green-500 hover:text-green-400 text-lg" title="儲存">💾</button>
+                    <button @click="cancelEdit" class="text-gray-500 hover:text-gray-400 text-lg" title="取消">❌</button>
+                </div>
+                <div v-else class="flex gap-2 justify-center">
+                    <button @click="startEdit(item)" class="text-blue-500 hover:text-blue-400 text-lg" title="編輯">✏️</button>
+                    <button @click="handleDelete(item.code)" class="text-red-500 hover:text-red-400 transition-colors p-1" title="刪除">
+                        🗑️
+                    </button>
+                </div>
             </td>
           </tr>
         </tbody>
@@ -86,6 +162,7 @@
              <div class="flex justify-between border-b border-gray-800 pb-1"><span>持倉:</span> <span class="text-neon-blue font-mono">{{ item.holdings }}</span></div>
              <div class="flex justify-between border-b border-gray-800 pb-1"><span>現價:</span> <span class="font-mono">{{ item.currentPrice }}</span></div>
              <div class="flex justify-between text-red-400"><span>警戒:</span> <span>{{ item.warning }}</span></div>
+             <div class="flex justify-between text-blue-300"><span>加碼:</span> <span>{{ item.addPoint || '-' }}</span></div>
              <div class="flex justify-between text-green-400"><span>停利:</span> <span>{{ item.tp1 }}</span></div>
              <div v-if="item.targetPrice" class="flex justify-between text-purple-400 font-bold"><span>目標:</span> <span>{{ item.targetPrice }}</span></div>
           </div>
@@ -137,11 +214,44 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import StrategyWizard from '../components/StrategyWizard.vue';
-import { getStrategies, deleteStrategy } from '../services/googleSheet';
+import { getStrategies, deleteStrategy, updateStrategy, fetchStockPrice } from '../services/googleSheet';
 
 const isWizardOpen = ref(false);
 const strategies = ref([]);
 const selectedNoteItem = ref(null);
+const editingCode = ref(null);
+const editForm = ref({});
+const loadingPrices = ref({});
+
+const startEdit = (item) => {
+    editingCode.value = item.code;
+    editForm.value = { ...item };
+};
+
+const cancelEdit = () => {
+    editingCode.value = null;
+    editForm.value = {};
+};
+
+const saveEdit = async () => {
+    // Optimistic Update
+    const original = strategies.value.find(s => s.code === editingCode.value);
+    Object.assign(original, editForm.value);
+    
+    const code = editingCode.value;
+    const form = { ...editForm.value };
+    
+    editingCode.value = null; // Exit edit mode immediately
+    
+    try {
+        const res = await updateStrategy(form);
+        if (res.status !== 'success') throw new Error(res.message);
+    } catch (e) {
+        console.error(e);
+        alert('Update failed: ' + e.message);
+        fetchData(); // Revert
+    }
+};
 
 const openWizard = () => {
   isWizardOpen.value = true;
@@ -168,8 +278,31 @@ const handleDelete = async (code) => {
             }
         } catch (e) {
             alert('刪除失敗: ' + e.message);
-            strategies.value = originalList; // Revert
         }
+    }
+};
+
+const updateSinglePrice = async (item) => {
+    if (loadingPrices.value[item.code]) return;
+    loadingPrices.value[item.code] = true;
+    
+    try {
+        const res = await fetchStockPrice(item.code);
+        
+        if (res && res.status === 'success' && res.price) {
+            // Update local state
+            item.currentPrice = res.price;
+            // Optionally save to sheet automatically if needed, or just let user save manually?
+            // User request implies they want it to update "on home page", usually implies persistence.
+            await updateStrategy({ code: item.code, currentPrice: res.price });
+        } else {
+            console.warn('無法取得現價', item.code);
+            // Optional: Show subtle UI feedback like a red dot or shake
+        }
+    } catch (err) {
+        console.error('Update price error', err);
+    } finally {
+         loadingPrices.value[item.code] = false;
     }
 };
 

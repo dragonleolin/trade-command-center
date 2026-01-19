@@ -100,7 +100,12 @@
                         <div v-if="step === 4" class="space-y-6">
                             <div class="group">
                                 <label class="block text-blue-400 text-sm mb-2">🔭 觀察加碼 (ADD)</label>
-                                <input v-model="form.addPoint" type="number" class="pixel-input-lg w-full font-mono text-blue-400" />
+                                <div class="relative">
+                                    <input v-model="form.addPoint" type="text" placeholder="價格 or 不建議加碼" class="pixel-input-lg w-full font-mono text-blue-400" />
+                                    <button @click="form.addPoint = '不建議加碼'" class="absolute right-2 top-2 bg-gray-700 text-xs px-2 py-1 hover:bg-gray-600 rounded text-gray-300">
+                                        🚫 不建議
+                                    </button>
+                                </div>
                             </div>
                             
                             <div class="p-4 border border-green-900 bg-green-900 bg-opacity-10 rounded-lg space-y-4">
@@ -190,9 +195,12 @@
 
        <!-- Success Overlay -->
        <div v-if="showSuccess" class="absolute inset-0 bg-black bg-opacity-95 flex flex-col items-center justify-center z-50 backdrop-blur-md">
-          <h2 class="text-5xl text-neon-yellow mb-8 font-bold tracking-widest drop-shadow-[0_0_10px_rgba(255,255,0,0.8)]">MISSION SAVED</h2>
-          <div class="text-8xl animate-bounce mb-4">📜</div>
-          <p class="text-gray-400 font-mono">Redirecting to command center...</p>
+          <h2 class="text-5xl text-neon-green mb-8 font-bold tracking-widest drop-shadow-[0_0_10px_rgba(0,255,0,0.8)]">MISSION ACCOMPLISHED</h2>
+          <div class="text-8xl animate-bounce mb-4">💾</div>
+          <p class="text-neon-yellow font-mono text-xl animate-pulse">數據同步中... (SYNCING)</p>
+          <div class="mt-4 text-white font-bold text-2xl tracking-widest">
+              ⚔️ 再攻略準備...
+          </div>
       </div>
 
     </div>
@@ -200,7 +208,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { saveStrategy } from '../services/googleSheet';
 
 const props = defineProps(['isOpen']);
@@ -215,6 +223,19 @@ const form = ref({
   code: '', name: '', holdings: '', cost: '', currentPrice: '',
   warning: '', stopLoss: '', addPoint: '', tp1: '', tp2: '', targetPrice: '',
   strategy: '波段操作', notes: '', risk: '中', advice: ''
+});
+
+const resetForm = () => {
+    step.value = 1;
+    form.value = {
+        code: '', name: '', holdings: '', cost: '', currentPrice: '',
+        warning: '', stopLoss: '', addPoint: '', tp1: '', tp2: '', targetPrice: '',
+        strategy: '波段操作', notes: '', risk: '中', advice: ''
+    };
+};
+
+watch(() => props.isOpen, (val) => {
+    if (val) resetForm();
 });
 
 const questions = {
@@ -253,11 +274,10 @@ const submit = async () => {
 
   setTimeout(() => {
     showSuccess.value = false;
-    step.value = 1;
-    form.value = { ...form.value, code: '', name: '', advice: '', risk: '中', targetPrice: '' }; 
+    resetForm();
     emit('refresh');
     emit('close');
-  }, 2000);
+  }, 3000);
 };
 </script>
 

@@ -1,147 +1,193 @@
-function doGet() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('2026');
-  const rows = sheet.getDataRange().getValues();
-  // Remove header row
-  const data = rows.slice(1).map(row => {
-    return {
-      code: row[0],
-      name: row[1],
-      holdings: row[2],
-      cost: row[3],
-      currentPrice: row[4],
-      returnRate: row[5],
-      strategy: row[6],
-      warning: row[7],
-      stopLoss: row[8],
-      addPoint: row[9],
-      tp1: row[10],
-      tp2: row[11],
-      notes: row[12],
-      risk: row[13] || '',     // New Column: Risk Level
-      advice: row[14] || '',    // New Column: Advice/Analysis
-      targetPrice: row[15] || '' // New Column: Target Price
-    };
-  });
+function doGet(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var data = sheet.getDataRange().getValues();
+  if (data.length === 0) return ContentService.createTextOutput(JSON.stringify({ status: 'success', data: [] })).setMimeType(ContentService.MimeType.JSON);
+
+  var headers = data[0];
+  var result = [];
   
-  return ContentService.createTextOutput(JSON.stringify({status: 'success', data: data}))
+  // Mapping for Chinese Headers to English Keys (for Frontend)
+  var map = getHeaderMap(); 
+
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    var obj = {};
+    for (var j = 0; j < headers.length; j++) {
+      var header = headers[j];
+      var key = map[header] || header; // Use mapped key or original
+      obj[key] = row[j];
+    }
+    result.push(obj);
+  }
+
+  return ContentService.createTextOutput(JSON.stringify({ status: 'success', data: result }))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
 function doPost(e) {
-  // Prevent manual execution error
-  if (!e) {
-      return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'No event object. Do not run doPost manually.'}))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
+  var lock = LockService.getScriptLock();
+  lock.tryLock(10000);
 
   try {
-    let data = e.parameter;
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
     
-    // Handle JSON body if present
-    if (e.postData && e.postData.contents) {
-        try {
-           const jsonData = JSON.parse(e.postData.contents);
-           // Merge JSON data into existing data object
-           data = {...data, ...jsonData};
-        } catch(err) {}
+    // Parse parameters
+    var params;
+    if (e.postData && e.postData.contents && e.postData.type === 'application/json') {
+       try {
+         params = JSON.parse(e.postData.contents);
+       } catch(z) {
+         params = e.parameter;
+       }
+    } else {
+       params = e.parameter;
+    }
+    
+    var action = params.action;
+    
+    // --- FEATURE: Proxy Stock Price (TWSE & OTC) ---
+    if (action === 'getPrice') {
+       var code = params.code;
+
+       function getPriceFromPrefix(prefix) {
+            var url = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=" + prefix + "_" + code + ".tw&json=1&delay=0&_=" + new Date().getTime();
+            try {
+                var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+                var content = response.getContentText();
+                var json = JSON.parse(content);
+                if (json.msgArray && json.msgArray.length > 0) {
+                    return json.msgArray[0];
+                }
+            } catch (e) {}
+            return null;
+       }
+
+       // Try TSE first, then OTC
+       var stock = getPriceFromPrefix('tse');
+       if (!stock) stock = getPriceFromPrefix('otc');
+       
+        if (stock) {
+           var price = stock.z; 
+           if (price === '-') price = stock.y; 
+           
+           return ContentService.createTextOutput(JSON.stringify({ 
+               status: 'success', 
+               price: price, 
+               name: stock.n 
+           })).setMimeType(ContentService.MimeType.JSON);
+       }
+       return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Not found' })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    // Get headers and prepare reverse map (English Key -> Sheet Header)
+    var dataRows = sheet.getDataRange().getValues();
+    var headers = dataRows[0];
+    var map = getHeaderMap(); // Chinese -> English
+    var reverseMap = {};
+    for(var k in map) { reverseMap[map[k]] = k; }
+
+    // Helper to find column index by English Key
+    function getColIndex(key) {
+        var targetHeader = reverseMap[key] || key;
+        return headers.indexOf(targetHeader);
+    }
+    var codeColIdx = getColIndex('code');
+    if (codeColIdx === -1) codeColIdx = 0; 
+
+
+    if (action === 'delete') {
+      var code = params.code;
+
+      for (var i = 1; i < dataRows.length; i++) {
+        if (dataRows[i][codeColIdx] == code) {
+          sheet.deleteRow(i + 1);
+          return ContentService.createTextOutput(JSON.stringify({ status: 'success', message: 'Deleted' })).setMimeType(ContentService.MimeType.JSON);
+        }
+      }
+      return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Not found' })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    if (action === 'update') {
+      var updateData = params.data;
+      if (typeof updateData === 'string') {
+        try { updateData = JSON.parse(updateData); } catch(e) {}
+      }
+
+      var code = updateData.code;
+
+      for (var i = 1; i < dataRows.length; i++) {
+        if (dataRows[i][codeColIdx] == code) {
+          // Found row, update columns
+          for(var key in updateData) {
+              var colIdx = getColIndex(key);
+              if (colIdx !== -1) {
+                  sheet.getRange(i + 1, colIdx + 1).setValue(updateData[key]);
+              }
+          }
+          return ContentService.createTextOutput(JSON.stringify({ status: 'success', message: 'Updated' })).setMimeType(ContentService.MimeType.JSON);
+        }
+      }
+      return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Not found' })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    if (data.action === 'delete') {
-      return doDelete(data.code);
+    if (action === 'create') {
+        var newStrategy;
+        if (params.data) {
+            newStrategy = params.data;
+            if (typeof newStrategy === 'string') { try { newStrategy = JSON.parse(newStrategy); } catch(e) {} }
+        } else {
+            return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Missing data' })).setMimeType(ContentService.MimeType.JSON);
+        }
+
+        // Check existing
+        for (var i = 1; i < dataRows.length; i++) {
+            if(dataRows[i][codeColIdx] == newStrategy.code) {
+                return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Already exists' })).setMimeType(ContentService.MimeType.JSON);
+            }
+        }
+
+        var newRow = [];
+        for (var j = 0; j < headers.length; j++) {
+            var header = headers[j];
+            var key = map[header] || header; // Map Header -> Key
+            newRow.push(newStrategy[key] || '');
+        }
+
+        sheet.appendRow(newRow);
+
+        return ContentService.createTextOutput(JSON.stringify({ status: 'success', message: 'Created' }))
+        .setMimeType(ContentService.MimeType.JSON);
     }
 
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('2026');
-    
-    // Append row
-    // Columns: 0.代號, 1.名稱, 2.持倉, 3.成本, 4.現價, 5.報酬率, 6.策略, 7.警戒, 8.停損, 9.加碼, 10.停利1, 11.停利2, 12.備註, 13.風險, 14.建議, 15.目標價
-    
-    sheet.appendRow([
-      data.code,
-      data.name,
-      data.holdings,
-      data.cost,
-      data.currentPrice,
-      '', // Return Rate (let sheet calculate)
-      data.strategy,
-      data.warning,
-      data.stopLoss,
-      data.addPoint,
-      data.tp1,
-      data.tp2,
-      data.notes,
-      data.risk,    // New
-      data.advice,   // New
-      data.targetPrice // New
-    ]);
-    
-    return ContentService.createTextOutput(JSON.stringify({status: 'success', message: 'Row added'}))
+    // Default Fallback: Unknown Action
+     return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Unknown Action', received: action }))
       .setMimeType(ContentService.MimeType.JSON);
-      
-  } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({status: 'error', message: error.toString()}))
+
+  } catch (e) {
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', error: e.toString() }))
       .setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    lock.releaseLock();
   }
 }
 
-/* ... (existing code: doGet, doPost, doDelete) ... */
-
-function doDelete(code) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('2026');
-  const rows = sheet.getDataRange().getValues();
-  
-  // Find row index (1-based for deleteRow, but rows array is 0-based)
-  // rows[i][0] is the code column
-  let rowIndex = -1;
-  
-  // Start from 1 to skip header
-  for (let i = 1; i < rows.length; i++) {
-    // Loose comparison in case of string/number difference
-    if (rows[i][0] == code) {
-      rowIndex = i + 1; // Convert 0-based array index to 1-based sheet row number
-      break;
-    }
-  }
-  
-  if (rowIndex > 0) {
-    sheet.deleteRow(rowIndex);
-    return ContentService.createTextOutput(JSON.stringify({status: 'success', message: 'Deleted ' + code}))
-      .setMimeType(ContentService.MimeType.JSON);
-  } else {
-     return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Code not found'}))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-}
-
-// -----------------------------------------------------------
-// Run this function once from the Apps Script Editor to initialize
-// 執行此函式可自動建立工作表與標題 (會自動新增目標價欄位)
-// -----------------------------------------------------------
-function initialSetup() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheetName = '2026';
-  let sheet = ss.getSheetByName(sheetName);
-  
-  if (!sheet) {
-    sheet = ss.insertSheet(sheetName);
-  }
-  
-  // Check if header exists
-  const headers = [
-    '代號', '名稱', '持倉', '成本', '現價', '報酬率', 
-    '策略', '警戒', '停損', '加碼', '停利1', '停利2', 
-    '備註', '風險', '建議', '目標價'
-  ];
-  
-  // Update header row (will overwrite/expand)
-  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-  
-  // Freeze first row
-  sheet.setFrozenRows(1);
-  
-  // Optional: Set some column widths
-  sheet.setColumnWidth(1, 80);  // Code
-  sheet.setColumnWidth(2, 120); // Name
-  sheet.setColumnWidth(15, 200); // Advice
-  
-  Logger.log('Setup Complete! Sheet "2026" updated with Target Price column.');
+function getHeaderMap() {
+  return {
+    '代號': 'code',
+    '名稱': 'name',
+    '持倉': 'holdings',
+    '成本': 'cost',
+    '現價': 'currentPrice',
+    '報酬率': 'returnRate',
+    '策略': 'strategy',
+    '警戒': 'warning',
+    '停損': 'stopLoss',
+    '加碼': 'addPoint',
+    '停利1': 'tp1',
+    '停利2': 'tp2',
+    '目標價': 'targetPrice',
+    '風險': 'risk',
+    '建議': 'advice',
+    '備註': 'notes'
+  };
 }
