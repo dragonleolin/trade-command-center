@@ -35,7 +35,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="item in strategies" :key="item.code" class="hover:bg-gray-800 transition-colors border-b border-gray-800 text-sm">
+          <tr v-for="item in paginatedStrategies" :key="item.code" class="hover:bg-gray-800 transition-colors border-b border-gray-800 text-sm">
             <!-- Code (Read-only) -->
             <td class="p-3 font-mono text-neon-yellow text-center">{{ item.code }}</td>
             
@@ -149,7 +149,7 @@
 
       <!-- Mobile Card View (Updated) -->
       <div class="md:hidden grid gap-4">
-        <div v-for="item in strategies" :key="item.code" class="pixel-card p-4 text-sm relative">
+        <div v-for="item in paginatedStrategies" :key="item.code" class="pixel-card p-4 text-sm relative">
            <button @click="handleDelete(item.code)" class="absolute top-2 right-2 text-red-500">🗑️</button>
           <div class="flex justify-between items-start mb-2 border-b border-gray-700 pb-2 pr-6">
             <div>
@@ -180,6 +180,31 @@
              </div>
           </div>
         </div>
+      </div>
+
+      <!-- Pagination Controls -->
+      <div v-if="totalPages > 1" class="flex justify-center items-center gap-4 mt-6 p-4">
+        <button 
+          @click="prevPage" 
+          :disabled="currentPage === 1"
+          class="pixel-btn px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed text-white"
+          :class="currentPage === 1 ? 'bg-gray-700' : 'bg-blue-600 hover:bg-blue-500'"
+        >
+          ◀ PREV
+        </button>
+        
+        <span class="text-neon-yellow font-bold text-lg font-mono">
+          PAGE {{ currentPage }} / {{ totalPages }}
+        </span>
+
+        <button 
+          @click="nextPage" 
+          :disabled="currentPage === totalPages"
+          class="pixel-btn px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed text-white"
+          :class="currentPage === totalPages ? 'bg-gray-700' : 'bg-blue-600 hover:bg-blue-500'"
+        >
+          NEXT ▶
+        </button>
       </div>
     </div>
 
@@ -212,7 +237,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import StrategyWizard from '../components/StrategyWizard.vue';
 import { getStrategies, deleteStrategy, updateStrategy, fetchStockPrice } from '../services/googleSheet';
 
@@ -222,6 +247,32 @@ const selectedNoteItem = ref(null);
 const editingCode = ref(null);
 const editForm = ref({});
 const loadingPrices = ref({});
+
+// Pagination State
+const currentPage = ref(1);
+const itemsPerPage = 7;
+
+// Computed Pagination
+
+const totalPages = computed(() => Math.ceil(strategies.value.length / itemsPerPage));
+
+const paginatedStrategies = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage;
+  const end = start + itemsPerPage;
+  return strategies.value.slice(start, end);
+});
+
+const nextPage = () => {
+  if (currentPage.value < totalPages.value) {
+    currentPage.value++;
+  }
+};
+
+const prevPage = () => {
+  if (currentPage.value > 1) {
+    currentPage.value--;
+  }
+};
 
 const startEdit = (item) => {
     editingCode.value = item.code;
@@ -263,6 +314,10 @@ const openNoteModal = (item) => {
 
 const fetchData = async () => {
   strategies.value = await getStrategies();
+  // Ensure we don't get stuck on a page that doesn't exist after data refresh
+  if (currentPage.value > totalPages.value) {
+      currentPage.value = 1;
+  }
 };
 
 const handleDelete = async (code) => {
@@ -292,9 +347,9 @@ const updateSinglePrice = async (item) => {
         if (res && res.status === 'success' && res.price) {
             // Update local state
             item.currentPrice = res.price;
-            // Optionally save to sheet automatically if needed, or just let user save manually?
-            // User request implies they want it to update "on home page", usually implies persistence.
-            await updateStrategy({ code: item.code, currentPrice: res.price });
+            // Send FULL object to ensure we don't overwrite with partial data
+            // We use { ...item } to ensure we send a plain object copy
+            await updateStrategy({ ...item });
         } else {
             console.warn('無法取得現價', item.code);
             // Optional: Show subtle UI feedback like a red dot or shake

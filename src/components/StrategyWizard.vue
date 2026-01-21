@@ -64,14 +64,20 @@
 
                         <!-- Step 2: Status -->
                         <div v-if="step === 2" class="grid grid-cols-1 gap-6">
+                            <!-- Not Invested Toggle -->
+                            <div class="flex items-center gap-2 mb-2">
+                                <input type="checkbox" id="notInvested" v-model="isNotInvested" class="w-5 h-5 accent-neon-pink cursor-pointer" />
+                                <label for="notInvested" class="text-neon-pink font-bold cursor-pointer select-none text-lg">⚠️ 尚未投入 (NOT YET INVESTED)</label>
+                            </div>
+
                              <div class="group">
-                                <label class="block text-gray-400 text-sm mb-2">目前持倉 (HOLDINGS)</label>
-                                <input v-model="form.holdings" type="number" class="pixel-input-lg w-full font-mono text-neon-blue" />
+                                <label class="block text-gray-400 text-sm mb-2" :class="{'opacity-50': isNotInvested}">目前持倉 (HOLDINGS)</label>
+                                <input v-model="form.holdings" type="number" class="pixel-input-lg w-full font-mono text-neon-blue disabled:opacity-30 disabled:cursor-not-allowed" :disabled="isNotInvested" />
                             </div>
                             <div class="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label class="block text-neon-yellow text-sm mb-2 font-bold">💰 平均成本</label>
-                                    <input v-model="form.cost" type="number" class="pixel-input-lg w-full font-mono text-xl" />
+                                    <label class="block text-neon-yellow text-sm mb-2 font-bold" :class="{'opacity-50': isNotInvested}">💰 平均成本</label>
+                                    <input v-model="form.cost" type="number" class="pixel-input-lg w-full font-mono text-xl disabled:opacity-30 disabled:cursor-not-allowed" :disabled="isNotInvested" />
                                 </div>
                                 <div>
                                     <label class="block text-gray-400 text-sm mb-2">現價 (PRICE)</label>
@@ -216,6 +222,7 @@ const emit = defineEmits(['close', 'refresh']);
 
 const step = ref(1);
 const showSuccess = ref(false);
+const isNotInvested = ref(false);
 const seed = Math.floor(Math.random() * 10000);
 const avatarUrl = `https://api.dicebear.com/9.x/adventurer/svg?seed=${seed}&backgroundColor=b6e3f4`;
 
@@ -227,12 +234,26 @@ const form = ref({
 
 const resetForm = () => {
     step.value = 1;
+    isNotInvested.value = false;
     form.value = {
         code: '', name: '', holdings: '', cost: '', currentPrice: '',
         warning: '', stopLoss: '', addPoint: '', tp1: '', tp2: '', targetPrice: '',
         strategy: '波段操作', notes: '', risk: '中', advice: ''
     };
 };
+
+watch(isNotInvested, (val) => {
+    if (val) {
+        form.value.holdings = '0';
+        form.value.cost = '0'; // Or keep empty, but 0 makes sense logically for math, though for display check, maybe empty string? Let's use 0 for now or user preference. If it's not invested, cost is technically N/A. Let's send 0 or empty string. The dashboard handles 0 as 'N/A' effectively if we set logic right.
+        // Actually, if I look at Dashboard:
+        // calculateReturn uses cost.
+        // if cost is 0, return is Infinity?
+        // Let's set to '' to avoid division by zero issues in naive math unless handled.
+        form.value.holdings = '';
+        form.value.cost = '';
+    }
+});
 
 watch(() => props.isOpen, (val) => {
     if (val) resetForm();

@@ -130,6 +130,15 @@ export const updateStrategy = async (strategy) => {
 };
 
 export const fetchStockPrice = async (code) => {
+    if (GOOGLE_SCRIPT_URL.includes('YOUR_DEPLOYED')) {
+        console.warn('Mock Get Price:', code);
+        const item = MOCK_DATA.find(i => i.code === code);
+        const current = item ? parseFloat(item.currentPrice) : 100;
+        // Simulate small fluctuation
+        const newPrice = (current * (1 + (Math.random() * 0.1 - 0.05))).toFixed(2);
+        return { status: 'success', price: newPrice };
+    }
+
     // 使用 GAS (Google Apps Script) 當作 Proxy 來繞過 CORS 限制
     // 這是最穩定抓取證交所資料的方式
     const formData = new URLSearchParams();
